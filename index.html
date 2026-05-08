@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIDI History Match</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --bg-color: #042157;
+            --accent-cyan: #00a2a7;
+            --accent-green: #bae793;
+            --error-red: #ff4d4d;
+            --text-white: #ffffff;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: rgba(255, 255, 255, 0.2);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at center, #0a317a 0%, #042157 100%);
+            color: var(--text-white);
+            font-family: 'Open Sans', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            font-family: 'Montserrat', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            margin: 0;
+            font-size: 2rem;
+            border-bottom: 2px solid var(--accent-cyan);
+            display: inline-block;
+            padding-bottom: 10px;
+        }
+
+        .container {
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 1000px;
+            gap: 100px;
+            padding: 20px;
+            z-index: 2;
+        }
+
+        .column {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex: 1;
+        }
+
+        .item {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            padding: 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+
+        .item:hover {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 15px rgba(0, 162, 167, 0.3);
+            transform: translateX(5px);
+        }
+
+        .item.selected {
+            border-color: var(--accent-cyan);
+            background: rgba(0, 162, 167, 0.1);
+            box-shadow: 0 0 20px var(--accent-cyan);
+        }
+
+        .item.correct { border-color: var(--accent-green); box-shadow: 0 0 15px var(--accent-green); }
+        .item.incorrect { border-color: var(--error-red); box-shadow: 0 0 15px var(--error-red); }
+
+        /* SVG Canvas para las líneas */
+        #connections {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .line {
+            fill: none;
+            stroke: var(--accent-cyan);
+            stroke-width: 3;
+            stroke-dasharray: 10;
+            animation: dash 1s linear infinite;
+            transition: stroke 0.3s;
+        }
+
+        @keyframes dash {
+            to { stroke-dashoffset: -20; }
+        }
+
+        .controls {
+            margin-top: 40px;
+            display: flex;
+            gap: 20px;
+            padding-bottom: 50px;
+        }
+
+        button {
+            font-family: 'Montserrat', sans-serif;
+            background: transparent;
+            color: white;
+            border: 2px solid var(--accent-cyan);
+            padding: 12px 30px;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: bold;
+            transition: 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        button:hover {
+            background: var(--accent-cyan);
+            color: var(--bg-color);
+        }
+
+        button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .feedback-icon {
+            position: absolute;
+            right: -30px;
+            opacity: 0;
+            transition: 0.3s;
+        }
+
+        .right .feedback-icon { left: -30px; right: auto; }
+
+        .visible { opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>MIDI History Match</h1>
+    </header>
+
+    <div class="container" id="game-container">
+        <svg id="connections"></svg>
+        
+        <div class="column left" id="left-col">
+            </div>
+
+        <div class="column right" id="right-col">
+            </div>
+    </div>
+
+    <div class="controls">
+        <button id="check-btn" disabled>
+            <i data-lucide="shield-check"></i> Submit
+        </button>
+        <button id="reset-btn">
+            <i data-lucide="refresh-cw"></i> Try Again
+        </button>
+    </div>
+
+    <script>
+        const data = [
+            { id: 1, left: "Before 1983", right: "Musicians used analog synthesizers that required complex manual connections, making synchronization virtually impossible." },
+            { id: 2, left: "Dave Smith & Ikutaro Kakehashi", right: "Innovative visionaries who saw an opportunity to create a universal protocol that would unite the industry." },
+            { id: 3, left: "NAMM 1983", right: "The first public demonstration of MIDI 1.0, where two synthesizers successfully communicated via a five-pin cable." },
+            { id: 4, left: "General MIDI (GM)", right: "An improvement that defined a set of sounds and controls, sparking an entire industry of MIDI recordings." },
+            { id: 5, left: "MIDI 2.0", right: "Addresses limitations by offering higher data resolution, bidirectional communication, and automatic device configuration while maintaining backward compatibility." }
+        ];
+
+        class MIDIMatcher {
+            constructor() {
+                this.selectedLeft = null;
+                this.pairs = []; // {leftId, rightId}
+                this.isLocked = false;
+                this.init();
+            }
+
+            init() {
+                this.render();
+                this.bindEvents();
+                lucide.createIcons();
+                window.addEventListener('resize', () => this.drawLines());
+            }
+
+            render() {
+                const leftCol = document.getElementById('left-col');
+                const rightCol = document.getElementById('right-col');
+                
+                // Shuffle right column only
+                const shuffledRight = [...data].sort(() => Math.random() - 0.5);
+
+                leftCol.innerHTML = data.map(item => `
+                    <div class="item" data-id="${item.id}" data-side="left">
+                        ${item.left}
+                    </div>
+                `).join('');
+
+                rightCol.innerHTML = shuffledRight.map(item => `
+                    <div class="item" data-id="${item.id}" data-side="right">
+                        ${item.right}
+                    </div>
+                `).join('');
+            }
+
+            bindEvents() {
+                document.querySelectorAll('.item').forEach(el => {
+                    el.addEventListener('click', (e) => this.handleSelect(e.currentTarget));
+                });
+
+                document.getElementById('check-btn').addEventListener('click', () => this.checkResults());
+                document.getElementById('reset-btn').addEventListener('click', () => this.reset());
+            }
+
+            handleSelect(el) {
+                if (this.isLocked) return;
+
+                const id = parseInt(el.dataset.id);
+                const side = el.dataset.side;
+
+                if (side === 'left') {
+                    document.querySelectorAll('.left .item').forEach(i => i.classList.remove('selected'));
+                    el.classList.add('selected');
+                    this.selectedLeft = id;
+                } else if (this.selectedLeft) {
+                    // Remover par previo si existe para este ID izquierdo
+                    this.pairs = this.pairs.filter(p => p.leftId !== this.selectedLeft);
+                    // Agregar nuevo par
+                    this.pairs.push({ leftId: this.selectedLeft, rightId: id });
+                    
+                    document.querySelectorAll('.left .item').forEach(i => i.classList.remove('selected'));
+                    this.selectedLeft = null;
+                    this.drawLines();
+                }
+
+                document.getElementById('check-btn').disabled = this.pairs.length < 5;
+            }
+
+            drawLines() {
+                const svg = document.getElementById('connections');
+                svg.innerHTML = '';
+                const containerRect = document.getElementById('game-container').getBoundingClientRect();
+
+                this.pairs.forEach(pair => {
+                    const leftEl = document.querySelector(`.left .item[data-id="${pair.leftId}"]`);
+                    const rightEl = document.querySelector(`.right .item[data-id="${pair.rightId}"]`);
+                    
+                    const r1 = leftEl.getBoundingClientRect();
+                    const r2 = rightEl.getBoundingClientRect();
+
+                    const x1 = r1.right - containerRect.left;
+                    const y1 = r1.top + r1.height / 2 - containerRect.top;
+                    const x2 = r2.left - containerRect.left;
+                    const y2 = r2.top + r2.height / 2 - containerRect.top;
+
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    const cp1x = x1 + (x2 - x1) / 2;
+                    const d = `M ${x1} ${y1} C ${cp1x} ${y1}, ${cp1x} ${y2}, ${x2} ${y2}`;
+                    
+                    line.setAttribute("d", d);
+                    line.setAttribute("class", "line");
+                    line.setAttribute("id", `line-${pair.leftId}`);
+                    svg.appendChild(line);
+                });
+            }
+
+            checkResults() {
+                this.isLocked = true;
+                let correctCount = 0;
+
+                this.pairs.forEach(pair => {
+                    const isCorrect = pair.leftId === pair.rightId;
+                    const leftEl = document.querySelector(`.left .item[data-id="${pair.leftId}"]`);
+                    const rightEl = document.querySelector(`.right .item[data-id="${pair.rightId}"]`);
+                    const line = document.getElementById(`line-${pair.leftId}`);
+
+                    if (isCorrect) {
+                        leftEl.classList.add('correct');
+                        rightEl.classList.add('correct');
+                        line.style.stroke = "var(--accent-green)";
+                        correctCount++;
+                    } else {
+                        leftEl.classList.add('incorrect');
+                        rightEl.classList.add('incorrect');
+                        line.style.stroke = "var(--error-red)";
+                    }
+                });
+
+                document.getElementById('check-btn').disabled = true;
+            }
+
+            reset() {
+                this.selectedLeft = null;
+                this.pairs = [];
+                this.isLocked = false;
+                this.render();
+                this.bindEvents();
+                document.getElementById('connections').innerHTML = '';
+                document.getElementById('check-btn').disabled = true;
+            }
+        }
+
+        // Iniciar App
+        new MIDIMatcher();
+    </script>
+</body>
+</html>
